@@ -37,6 +37,24 @@ const sleep = (milliseconds) => {
 
 ////////////////////////////////////////////////////////////////////////////////////////
 
+const iceCreamStandActor = {
+    'get pie a la mode': (msg, context, state) => {
+      if (state.scoops == 0) {
+        dispatch(msg.waiter,
+                 { type: 'error', msg: "no ice-cream left", customer: msg.customer })
+        return state;
+      }
+      else {
+        state.scoops--;
+        dispatch(msg.customer,
+                 { type: 'put on table', food: msg.food + " a la mode" });
+        dispatch(msg.waiter,
+                 { type: 'add to order', food: msg.food + " a la mode", customer: msg.customer });
+        return state;
+      }
+    }
+  }
+
 const pieCaseActor = {
   'get slice': (msg, context, state) => {
     if (state.slices.length == 0) {
@@ -52,7 +70,22 @@ const pieCaseActor = {
                { type: 'add to order', food: slice, customer: msg.customer });
       return state;
     }
+  },
+
+  'get slice a la mode': (msg, context, state) => {
+    if (state.slices.length == 0) {
+      dispatch(msg.waiter,
+               { type: 'error', msg: "no pie left", customer: msg.customer })
+      return state
+    }
+    else {
+      var slice = state.slices.shift() + " pie slice";
+      dispatch(state.iceCreamStand,
+               { type: 'get pie a la mode', food: slice, customer: msg.customer, waiter: msg.waiter });
+      return state;
+    }
   }
+
 }
 
 const waiterActor = {
@@ -60,8 +93,10 @@ const waiterActor = {
     if (msg.wants == "pie") {
       dispatch(state.pieCase,
                { type: "get slice", customer: msg.customer, waiter: ctx.self })
-    }
-    else {
+    } else if (msg.wants == "pie a la mode") {
+        dispatch(state.pieCase,
+            { type: "get slice a la mode", customer: msg.customer, waiter: ctx.self })
+    } else {
       console.dir(`Don't know how to order ${msg.wants}`);
     }
   },
@@ -82,22 +117,34 @@ const customerActor = {
                     { type: "order", customer: ctx.self, wants: 'pie' })
   },
 
+  'hungry for pie a la mode': (msg, ctx, state) => {
+    return dispatch(state.waiter,
+                    { type: "order", customer: ctx.self, wants: 'pie a la mode' })
+  },
+
   'put on table': (msg, ctx, _state) =>
     console.log(`${ctx.self.name} sees "${msg.food}" appear on the table`),
 
   'no pie left': (_msg, ctx, _state) =>
-    console.log(`${ctx.self.name} sulksâ€¦`)
+    console.log(`${ctx.self.name} sulks...`)
 }
 
 /////////////////////////////////////////////////////////////////////////////////
 
 const actorSystem = start();
 
+let iceCreamStand = start_actor(
+    actorSystem,
+    'iceCreamStand',
+    iceCreamStandActor,
+    { scoops: 1 });
+
 let pieCase = start_actor(
   actorSystem,
   'pie-case',
   pieCaseActor,
-  { slices: ["apple", "peach", "cherry"] });
+  { slices: ["apple", "peach", "cherry"],
+    iceCreamStand: iceCreamStand });
 
 let waiter = start_actor(
   actorSystem,
@@ -110,11 +157,9 @@ let c1 = start_actor(actorSystem,   'customer1',
 let c2 = start_actor(actorSystem,   'customer2',
                      customerActor, { waiter: waiter });
 
-dispatch(c1, { type: 'hungry for pie', waiter: waiter });
+dispatch(c1, { type: 'hungry for pie a la mode', waiter: waiter });
 dispatch(c2, { type: 'hungry for pie', waiter: waiter });
-dispatch(c1, { type: 'hungry for pie', waiter: waiter });
-dispatch(c2, { type: 'hungry for pie', waiter: waiter });
-dispatch(c1, { type: 'hungry for pie', waiter: waiter });
+
 sleep(500)
   .then(() => {
     stop(actorSystem);
