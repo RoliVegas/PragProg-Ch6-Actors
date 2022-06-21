@@ -1,0 +1,1 @@
+The Pragmatic Programmer - Chapter 6 - Actors challenge
